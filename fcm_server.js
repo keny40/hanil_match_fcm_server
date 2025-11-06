@@ -1,32 +1,63 @@
 import express from "express";
-import bodyParser from "body-parser";
 import admin from "firebase-admin";
-import dotenv from "dotenv";
 
-dotenv.config();
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
+// Render 환경변수로부터 Firebase 인증키 로드
 const serviceAccount = JSON.parse(process.env.FCM_SERVICE_ACCOUNT_KEY);
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+// Firebase Admin SDK 초기화
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  console.log("🔥 Firebase Admin Initialized");
+}
+
+// 기본 루트 (브라우저에서 직접 접속 시)
+app.get("/", (req, res) => {
+  res.send("✅ Hanil Match FCM Server is running");
 });
 
+// FCM 푸시 메시지 전송 엔드포인트
 app.post("/send", async (req, res) => {
-  const { token, title, body } = req.body;
   try {
+    const { token, title, body } = req.body;
+
+    if (!token || !title || !body) {
+      return res.status(400).json({
+        success: false,
+        message: "token, title, body 모두 필요합니다.",
+      });
+    }
+
     const message = {
+      notification: {
+        title,
+        body,
+      },
       token,
-      notification: { title, body }
     };
-    await admin.messaging().send(message);
-    res.json({ success: true });
+
+    const response = await admin.messaging().send(message);
+    console.log("📤 메시지 전송 성공:", response);
+
+    return res.json({
+      success: true,
+      messageId: response,
+    });
   } catch (error) {
-    console.error("Error sending message:", error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("❌ FCM 전송 오류:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
+// Render 기본 포트 설정
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`✅ FCM server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ FCM server running on port ${PORT}`);
+});
